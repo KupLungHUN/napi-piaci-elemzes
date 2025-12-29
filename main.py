@@ -1,8 +1,8 @@
 import smtplib
 from email.mime.text import MIMEText
 
-EMAIL = "IDE_A_SAJAT_EMAIL_CIMED"
-APP_JELSZO = "IDE_GMAIL_APP_JELSZO"
+EMAIL = "playboyagent@gmail.com"
+APP_JELSZO = "4532 996 880"
 
 szoveg = """
 Ez egy TESZT email.

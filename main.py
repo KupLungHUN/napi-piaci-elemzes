@@ -23,8 +23,7 @@ Solana (SOL):
 Ár: {sol['usd']} USD
 24h változás: {sol['usd_24h_change']:.2f} %
 
-Írj rövid, tömör napi piaci elemzést magyar nyelven.
-Ne adj konkrét befektetési tanácsot.
+Elemezze a tőzsde jelenlegi trendjeit, különös tekintettel a sol. Azonosítsa a felmerülő mintákat, és javasoljon potenciális befektetési lehetőségeket. Az elemzés során vegye figyelembe a legfrissebb eredményjelentéseket és az iparági híreket, elüre látható mozgásokat
 """
 
 # --- GROQ API ---

@@ -41,7 +41,13 @@ response = requests.post(
     }
 )
 
-analysis = response.json()["choices"][0]["message"]["content"]
+data = response.json()
+
+if "choices" not in data:
+    analysis = "⚠️ Az AI válasza nem érhető el jelenleg (limit vagy hiba)."
+else:
+    analysis = data["choices"][0]["message"]["content"]
+
 
 message = f"""
 📈 *Napi piaci elemzés – Solana*

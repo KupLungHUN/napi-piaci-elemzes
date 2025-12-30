@@ -28,11 +28,7 @@ Solana (SOL):
 - Ár: {sol['usd']} USD
 - 24 órás változás: {sol['usd_24h_change']:.2f} %
 
-Készíts rövid, tömör napi piaci elemzést magyarul:
-- általános piaci hangulat
-- Solana trendek
-- kockázatok és lehetőségek
-Ne adj befektetési tanácsot.
+Elemezze a tőzsde jelenlegi trendjeit, különös tekintettel a sol. Azonosítsa a felmerülő mintákat, és javasoljon potenciális befektetési lehetőségeket. Az elemzés során vegye figyelembe a legfrissebb eredményjelentéseket és az iparági híreket.
 """
 
 response = client.chat.completions.create(

@@ -2,11 +2,12 @@ import os
 import requests
 from datetime import datetime
 
+# --- SECRETS ---
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 GROQ_API_KEY = os.environ["GROQ_API_KEY"]
 
-# --- SOLANA ÁR ---
+# --- SOLANA ÁR (CoinGecko) ---
 sol = requests.get(
     "https://api.coingecko.com/api/v3/simple/price",
     params={
@@ -16,6 +17,7 @@ sol = requests.get(
     }
 ).json()["solana"]
 
+# --- PROMPT ---
 prompt = f"""
 Dátum: {datetime.now().strftime('%Y-%m-%d')}
 
@@ -42,8 +44,6 @@ response = requests.post(
 )
 
 data = response.json()
-
-# DEBUG – ezt MOST hagyd bent
 print("GROQ RESPONSE:", data)
 
 if "choices" in data and len(data["choices"]) > 0:
@@ -65,9 +65,30 @@ else:
         sentiment = "negatív"
 
     analysis = f"""
-Automatikus piaci összefoglaló (AI fallback):
+Automatikus piaci összefoglaló:
 
 A Solana árfolyam {trend} jeleit mutatja.
-A rövid távú piaci hangulat {sentiment}.
-A jelenlegi mozgás fokozott figyelmet igényel a volatilitás miatt.
+A piaci hangulat jelenleg {sentiment}.
 """
+
+# --- TELEGRAM ÜZENET ---
+message = f"""
+📈 Napi piaci elemzés – Solana
+
+💰 Ár: {sol['usd']} USD
+📊 24h változás: {sol['usd_24h_change']:.2f} %
+
+🧠 Elemzés:
+{analysis}
+"""
+
+telegram_response = requests.post(
+    f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+    json={
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": message
+    }
+)
+
+print("TELEGRAM RESPONSE:", telegram_response.text)
+print("KÉSZ – üzenet elküldve")

@@ -34,7 +34,7 @@ response = requests.post(
         "Content-Type": "application/json"
     },
     json={
-        "model": "llama3-70b-8192",
+        "model": "llama3-8b-8192",
         "messages": [
             {"role": "user", "content": prompt}
         ]
@@ -43,29 +43,31 @@ response = requests.post(
 
 data = response.json()
 
-if "choices" not in data:
-    analysis = "⚠️ Az AI válasza nem érhető el jelenleg (limit vagy hiba)."
-else:
+# DEBUG – ezt MOST hagyd bent
+print("GROQ RESPONSE:", data)
+
+if "choices" in data and len(data["choices"]) > 0:
     analysis = data["choices"][0]["message"]["content"]
+else:
+    change = sol["usd_24h_change"]
 
+    if change > 2:
+        trend = "erőteljes emelkedés"
+        sentiment = "pozitív"
+    elif change > 0:
+        trend = "enyhe emelkedés"
+        sentiment = "óvatosan pozitív"
+    elif change > -2:
+        trend = "oldalazás / enyhe gyengülés"
+        sentiment = "bizonytalan"
+    else:
+        trend = "jelentős esés"
+        sentiment = "negatív"
 
-message = f"""
-📈 *Napi piaci elemzés – Solana*
+    analysis = f"""
+Automatikus piaci összefoglaló (AI fallback):
 
-💰 Ár: {sol['usd']} USD
-📊 24h változás: {sol['usd_24h_change']:.2f} %
-
-🧠 Elemzés:
-{analysis}
+A Solana árfolyam {trend} jeleit mutatja.
+A rövid távú piaci hangulat {sentiment}.
+A jelenlegi mozgás fokozott figyelmet igényel a volatilitás miatt.
 """
-
-requests.post(
-    f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-    json={
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": message,
-        "parse_mode": "Markdown"
-    }
-)
-
-print("Telegram üzenet elküldve (GROQ)")

@@ -25,7 +25,7 @@ Solana (SOL):
 Ár: {sol['usd']} USD
 24h változás: {sol['usd_24h_change']:.2f} %
 
-"Viselkedj professzionális kriptovaluta piaci elemzőként és swing/day traderként.
+Viselkedj professzionális kriptovaluta piaci elemzőként és swing/day traderként.
 
 Készíts teljes napi elemzést a Solana (SOL) coinról az aktuális piaci adatok alapján.
 
@@ -116,7 +116,7 @@ A végén adj:
 Az elemzés legyen objektív, adat-alapú és ne túl optimista.
 
 Használj táblázatokat és jól elkülönített szekciókat.
-"
+"""
 
 # --- GROQ API ---
 response = requests.post(

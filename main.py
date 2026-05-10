@@ -114,8 +114,6 @@ A végén adj:
   - erősen bearish
 
 Az elemzés legyen objektív, adat-alapú és ne túl optimista.
-
-Használj táblázatokat és jól elkülönített szekciókat.
 """
 
 # --- GROQ API ---
@@ -126,12 +124,17 @@ response = requests.post(
         "Content-Type": "application/json"
     },
     json={
-        "model": "llama-3.1-8b-instant",
+        "model": "llama-3.3-70b-versatile",
         "messages": [
             {"role": "user", "content": prompt}
         ]
     }
 )
+
+# Hibakeresés
+print(response.status_code)
+print(response.text)
+response.raise_for_status()
 
 data = response.json()
 print("GROQ RESPONSE:", data)
@@ -160,6 +163,9 @@ Automatikus piaci összefoglaló:
 A Solana árfolyam {trend} jeleit mutatja.
 A piaci hangulat jelenleg {sentiment}.
 """
+# Telegram hossz limit
+MAX_LEN = 3500
+analysis = analysis[:MAX_LEN]
 
 # --- TELEGRAM ÜZENET ---
 message = f"""

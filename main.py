@@ -25,67 +25,50 @@ Solana (SOL):
 Ár: {sol['usd']} USD
 24h változás: {sol['usd_24h_change']:.2f} %
 
-Viselkedj professzionális kriptovaluta piaci elemzőként és swing/day traderként.
+Viselkedj professzionális kriptovaluta-piaci elemzőként és swing/day traderként.
 
-Készíts teljes napi elemzést a Solana (SOL) coinról az aktuális piaci adatok alapján.
+Készíts TÖMÖR, adatközpontú napi SOL elemzést magyarul.
 
-Az elemzés legyen tömör, logikus és kereskedői szemléletű.
+FONTOS:
+- A teljes válasz legfeljebb 2800 karakter legyen.
+- Ne ismételd ugyanazt több pontban.
+- Minden rész csak a legfontosabb információkat tartalmazza.
+- Ha egy adathoz nem kaptál valós adatot, NE találj ki számot vagy hírt. Írd: "nincs adat".
+- Ne állíts olyan hírt, whale aktivitást, funding rate-et, open interestet, RSI-t, MACD-t vagy EMA-t tényként, amelyet a bemenet nem tartalmaz.
 
-Elemezd a következőket:
+Használd pontosan ezt a szerkezetet:
 
-1. Aktuális ár és napi teljesítmény
-- Jelenlegi SOL ár
-- 24 órás változás (%)
-- Napi minimum és maximum
-- Volumen változás
+1. 📊 PIACI HELYZET
+- SOL ár és 24h változás
+- Trend: bullish / bearish / sideway
+- Momentum röviden
 
-2. Technikai elemzés
-Vizsgáld meg:
-- Trend irány (bullish / bearish / sideway)
-- RSI
-- MACD
-- EMA 20 / 50 / 200
-- Támasz és ellenállás szintek
-- Likviditási zónák
-- Kitörési vagy visszafordulási lehetőségek
-- Gyertyaalakzatok
-- Momentum
+2. 🎯 TECHNIKAI KÉP
+- Legfontosabb támasz
+- Legfontosabb ellenállás
+- RSI / MACD / EMA csak akkor, ha rendelkezésre áll valódi adat
+- Kitörési vagy visszafordulási feltétel
 
-3. Piaci hangulat
-Elemezd:
-- Fear & Greed hatását
-- Kripto piac általános állapotát
-- Bitcoin dominanciát
-- Solana ökoszisztéma híreket
-- Whale aktivitást
-- Funding rate-eket
-- Open interest változásokat
+3. 🌍 PIACI HANGULAT
+Maximum 3 rövid pont.
+BTC/piaci környezet, hírek, funding, OI stb. csak akkor, ha erre tényleges adat áll rendelkezésre.
 
-4. Előrejelzés
-Adj:
-- rövid távú (24-48h)
-- középtávú (1 hét)
-- bullish és bearish szcenáriót
-- valószínűségi becslést
+4. 🔮 FORGATÓKÖNYVEK
+🟢 Bullish: maximum 2 mondat
+🔴 Bearish: maximum 2 mondat
+24-48h várakozás: 1 mondat
+1 hetes kilátás: 1 mondat
 
-5. Kockázatok
-Sorold fel:
-- milyen esemény törheti meg az elemzést
-- makrogazdasági kockázatok
-- BTC mozgás hatása
-- manipulációs veszélyek
+5. ⚠️ KOCKÁZAT
+Maximum 3 rövid kockázat.
 
-6. Összegzés
-A végén adj:
-- egy rövid, profi összefoglalót
-- napi bias-t:
-  - erősen bullish
-  - bullish
-  - semleges
-  - bearish
-  - erősen bearish
+6. 🧭 NAPI BIAS
+Pontosan egy:
+ERŐSEN BULLISH / BULLISH / SEMLEGES / BEARISH / ERŐSEN BEARISH
 
-Az elemzés legyen objektív, adat-alapú.
+Zárásként adj egyetlen rövid mondatot arról, hogy mit érdemes ma figyelni.
+
+Ne írj hosszú bevezetést vagy általános magyarázatokat.
 """
 
 # --- GROQ API ---
@@ -135,13 +118,9 @@ Automatikus piaci összefoglaló:
 A Solana árfolyam {trend} jeleit mutatja.
 A piaci hangulat jelenleg {sentiment}.
 """
-# Telegram hossz limit
-MAX_LEN = 3500
-analysis = analysis[:MAX_LEN]
 
 # --- TELEGRAM ÜZENET ---
-message = f"""
-📈 Napi piaci elemzés – Solana
+message = f"""📈 Napi piaci elemzés – Solana
 
 💰 Ár: {sol['usd']} USD
 📊 24h változás: {sol['usd_24h_change']:.2f} %
@@ -150,6 +129,13 @@ message = f"""
 {analysis}
 """
 
+# Telegram maximum: 4096 karakter.
+# Hagyunk egy kis biztonsági tartalékot.
+TELEGRAM_MAX = 4000
+
+if len(message) > TELEGRAM_MAX:
+    message = message[:TELEGRAM_MAX - 50] + "\n\n⚠️ Riport rövidítve."
+
 telegram_response = requests.post(
     f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
     json={
@@ -157,6 +143,8 @@ telegram_response = requests.post(
         "text": message
     }
 )
+
+telegram_response.raise_for_status()
 
 print("TELEGRAM RESPONSE:", telegram_response.text)
 print("KÉSZ – üzenet elküldve")

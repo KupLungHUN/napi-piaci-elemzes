@@ -38,8 +38,6 @@ Elemezd a következőket:
 - 24 órás változás (%)
 - Napi minimum és maximum
 - Volumen változás
-- Piaci kapitalizáció
-- BTC és ETH viszonyított teljesítmény
 
 2. Technikai elemzés
 Vizsgáld meg:
@@ -47,27 +45,13 @@ Vizsgáld meg:
 - RSI
 - MACD
 - EMA 20 / 50 / 200
-- Bollinger Bands
 - Támasz és ellenállás szintek
 - Likviditási zónák
 - Kitörési vagy visszafordulási lehetőségek
 - Gyertyaalakzatok
 - Momentum
 
-3. Idősík elemzés
-Külön elemezd:
-- 15m
-- 1H
-- 4H
-- 1D
-
-Minden idősíknál:
-- trend
-- várható mozgás
-- fontos szintek
-- belépési lehetőség
-
-4. Piaci hangulat
+3. Piaci hangulat
 Elemezd:
 - Fear & Greed hatását
 - Kripto piac általános állapotát
@@ -77,33 +61,21 @@ Elemezd:
 - Funding rate-eket
 - Open interest változásokat
 
-5. Előrejelzés
+4. Előrejelzés
 Adj:
 - rövid távú (24-48h)
 - középtávú (1 hét)
 - bullish és bearish szcenáriót
 - valószínűségi becslést
 
-6. Kereskedési ötletek
-Adj konkrét példákat:
-- scalp setup
-- intraday setup
-- swing setup
-
-Mindennél:
-- belépési zóna
-- stop loss
-- take profit
-- risk/reward arány
-
-7. Kockázatok
+5. Kockázatok
 Sorold fel:
 - milyen esemény törheti meg az elemzést
 - makrogazdasági kockázatok
 - BTC mozgás hatása
 - manipulációs veszélyek
 
-8. Összegzés
+6. Összegzés
 A végén adj:
 - egy rövid, profi összefoglalót
 - napi bias-t:
@@ -113,7 +85,7 @@ A végén adj:
   - bearish
   - erősen bearish
 
-Az elemzés legyen objektív, adat-alapú és ne túl optimista.
+Az elemzés legyen objektív, adat-alapú.
 """
 
 # --- GROQ API ---

@@ -29,7 +29,7 @@ Viselkedj professzionális kriptovaluta piaci elemzőként és swing/day traderk
 
 Készíts teljes napi elemzést a Solana (SOL) coinról az aktuális piaci adatok alapján.
 
-Az elemzés legyen részletes, logikus és kereskedői szemléletű.
+Az elemzés legyen tömör, logikus és kereskedői szemléletű.
 
 Elemezd a következőket:
 
@@ -124,7 +124,7 @@ response = requests.post(
         "Content-Type": "application/json"
     },
     json={
-        "model": "llama-3.3-70b-versatile",
+        "model": "openai/gpt-oss-120b",
         "messages": [
             {"role": "user", "content": prompt}
         ]

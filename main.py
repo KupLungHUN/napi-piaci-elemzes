@@ -16,7 +16,7 @@ GROQ_API_KEY = os.environ["GROQ_API_KEY"]
 COINGECKO = "https://api.coingecko.com/api/v3"
 
 HEADERS = {
-    "User-Agent": "SOL-Daily-Market-Analysis/1.0"
+    "User-Agent": "SOL-Daily-Market-Analysis/3.0"
 }
 
 
@@ -46,6 +46,7 @@ def get_json(url, params=None, retries=3, timeout=30):
 
         except Exception as e:
             last_error = e
+
             print(
                 f"API hiba, próbálkozás "
                 f"{attempt + 1}/{retries}: {e}"
@@ -178,18 +179,13 @@ def calculate_macd(values):
 
     macd_value = macd_line[-1]
     signal_value = signal_series[-1]
-
     histogram = macd_value - signal_value
 
-    return (
-        macd_value,
-        signal_value,
-        histogram
-    )
+    return macd_value, signal_value, histogram
 
 
 # =========================================================
-# COINGECKO HISTORIKUS ADAT
+# COINGECKO HISTORIKUS SOL ADAT
 # =========================================================
 
 def get_market_chart(coin_id, days):
@@ -227,10 +223,9 @@ hourly_volumes = [
     for point in volume_points
 ]
 
-
-if len(hourly_prices) < 250:
+if len(hourly_prices) < 800:
     raise RuntimeError(
-        "Nincs elegendő CoinGecko történelmi adat."
+        "Nincs elegendő CoinGecko történelmi SOL adat."
     )
 
 
@@ -240,11 +235,22 @@ if len(hourly_prices) < 250:
 
 sol_price = hourly_prices[-1]
 
-# kb. 24 órával ezelőtti adat
 price_24h_ago = hourly_prices[-25]
+price_7d_ago = hourly_prices[-(24 * 7 + 1)]
+price_30d_ago = hourly_prices[-(24 * 30 + 1)]
 
 sol_change_24h = pct_change(
     price_24h_ago,
+    sol_price
+)
+
+sol_change_7d = pct_change(
+    price_7d_ago,
+    sol_price
+)
+
+sol_change_30d = pct_change(
+    price_30d_ago,
     sol_price
 )
 
@@ -285,19 +291,14 @@ else:
 
 
 # =========================================================
-# KB. 4 ÓRÁS PRICE SERIES
-#
-# CoinGecko órás adatából minden 4. pontot használunk.
-# Ez NEM exchange OHLC gyertya,
-# hanem 4 óránként mintavett piaci ár.
+# KB. 4H TECHNIKAI ADATSOR
 # =========================================================
 
 prices_4h = hourly_prices[::4]
 
-
 if len(prices_4h) < 205:
     raise RuntimeError(
-        "Nincs elég 4 órás adat EMA200 számításhoz."
+        "Nincs elegendő 4H adat EMA200 számításhoz."
     )
 
 
@@ -331,9 +332,7 @@ macd_value, macd_signal, macd_hist = (
 
 
 # =========================================================
-# TÁMASZ / ELLENÁLLÁS
-#
-# Utolsó 30 db 4h adatpont ~= 5 nap
+# SUPPORT / RESISTANCE
 # =========================================================
 
 recent_prices = prices_4h[-30:]
@@ -341,9 +340,17 @@ recent_prices = prices_4h[-30:]
 support = min(recent_prices)
 resistance = max(recent_prices)
 
+support_distance = (
+    ((sol_price - support) / sol_price) * 100
+)
+
+resistance_distance = (
+    ((resistance - sol_price) / sol_price) * 100
+)
+
 
 # =========================================================
-# TREND
+# TECHNIKAI TREND
 # =========================================================
 
 if (
@@ -367,7 +374,7 @@ else:
 
 
 # =========================================================
-# BTC
+# BTC ADAT
 # =========================================================
 
 print("BTC adatok lekérése...")
@@ -384,7 +391,6 @@ try:
     ]
 
     btc_price = btc_prices[-1]
-
     btc_24h_ago = btc_prices[-25]
 
     btc_change_24h = pct_change(
@@ -397,6 +403,19 @@ except Exception as e:
 
     btc_price = None
     btc_change_24h = None
+
+
+# =========================================================
+# SOL / BTC RELATÍV ERŐ
+# =========================================================
+
+sol_vs_btc_24h = None
+
+if btc_change_24h is not None:
+    sol_vs_btc_24h = (
+        sol_change_24h
+        - btc_change_24h
+    )
 
 
 # =========================================================
@@ -454,6 +473,173 @@ except Exception as e:
 
 
 # =========================================================
+# MARKET SCORE 0-100
+# =========================================================
+
+score = 50
+
+
+# --- ÁR EMA20 FELETT / ALATT ---
+
+if (
+    ema20 is not None
+    and sol_price > ema20
+):
+    score += 5
+else:
+    score -= 5
+
+
+# --- EMA20 / EMA50 ---
+
+if (
+    ema20 is not None
+    and ema50 is not None
+):
+    if ema20 > ema50:
+        score += 7
+    else:
+        score -= 7
+
+
+# --- EMA50 / EMA200 ---
+
+if (
+    ema50 is not None
+    and ema200 is not None
+):
+    if ema50 > ema200:
+        score += 8
+    else:
+        score -= 8
+
+
+# --- RSI ---
+
+if rsi14 is not None:
+
+    if 50 <= rsi14 <= 65:
+        score += 7
+
+    elif 40 <= rsi14 < 50:
+        score += 1
+
+    elif 65 < rsi14 <= 70:
+        score += 3
+
+    elif rsi14 > 70:
+        score -= 3
+
+    elif rsi14 < 40:
+        score -= 7
+
+
+# --- MACD ---
+
+if macd_hist is not None:
+
+    if macd_hist > 0:
+        score += 7
+    else:
+        score -= 7
+
+
+# --- VOLUMEN ---
+
+if volume_change is not None:
+
+    if volume_change > 10:
+        score += 5
+
+    elif volume_change < -10:
+        score -= 5
+
+
+# --- SOL/BTC RELATÍV ERŐ ---
+
+if sol_vs_btc_24h is not None:
+
+    if sol_vs_btc_24h > 1:
+        score += 6
+
+    elif sol_vs_btc_24h < -1:
+        score -= 6
+
+
+# --- 7 NAPOS MOMENTUM ---
+
+if sol_change_7d is not None:
+
+    if sol_change_7d > 5:
+        score += 5
+
+    elif sol_change_7d < -5:
+        score -= 5
+
+
+# --- 30 NAPOS TREND ---
+
+if sol_change_30d is not None:
+
+    if sol_change_30d > 10:
+        score += 5
+
+    elif sol_change_30d < -10:
+        score -= 5
+
+
+# --- FEAR & GREED ---
+
+if fear_greed is not None:
+
+    if 45 <= fear_greed <= 70:
+        score += 3
+
+    elif fear_greed >= 80:
+        score -= 3
+
+    elif fear_greed <= 20:
+        score -= 3
+
+
+# --- SCORE 0-100 KÖZÉ SZORÍTÁSA ---
+
+score = max(
+    0,
+    min(100, score)
+)
+
+
+# =========================================================
+# OBJEKTÍV BIAS
+# =========================================================
+
+if score >= 75:
+    calculated_bias = "ERŐSEN BULLISH"
+
+elif score >= 60:
+    calculated_bias = "BULLISH"
+
+elif score >= 40:
+    calculated_bias = "SEMLEGES"
+
+elif score >= 25:
+    calculated_bias = "BEARISH"
+
+else:
+    calculated_bias = "ERŐSEN BEARISH"
+
+
+print("SOL 24h:", fmt(sol_change_24h), "%")
+print("SOL 7d:", fmt(sol_change_7d), "%")
+print("SOL 30d:", fmt(sol_change_30d), "%")
+print("SOL vs BTC:", fmt(sol_vs_btc_24h), "%")
+print("RSI:", fmt(rsi14))
+print("MARKET SCORE:", score)
+print("CALCULATED BIAS:", calculated_bias)
+
+
+# =========================================================
 # DÁTUM
 # =========================================================
 
@@ -471,27 +657,41 @@ date_string = local_time.strftime(
 # =========================================================
 
 prompt = f"""
-Te professzionális kriptovaluta-piaci elemző és
-swing trader vagy.
+Te professzionális kriptovaluta-piaci elemző,
+swing trader és kockázatelemző vagy.
 
 Az alábbi adatok külső API-kból származó
 valós piaci adatok.
 
-FONTOS:
-TILOS olyan számot, hírt, whale aktivitást,
-funding rate-et vagy open interest adatot
-kitalálnod, amely nincs megadva.
+TILOS:
+- hírt kitalálni
+- whale aktivitást kitalálni
+- funding rate-et kitalálni
+- open interestet kitalálni
+- hiányzó indikátort kitalálni
+- nem létező eseményt tényként közölni
 
-Dátum:
+Az elemzés célja nem a biztos jóslás,
+hanem a jelenlegi piaci struktúra
+objektív értékelése.
+
+DÁTUM
 {date_string}
 
-SOLANA
+
+SOLANA PIACI ADATOK
 
 Aktuális ár:
 {sol_price:.2f} USD
 
-24h változás:
+24h:
 {fmt(sol_change_24h)} %
+
+7 nap:
+{fmt(sol_change_7d)} %
+
+30 nap:
+{fmt(sol_change_30d)} %
 
 24h maximum:
 {sol_high_24h:.2f} USD
@@ -502,16 +702,13 @@ Aktuális ár:
 24h volumen:
 {sol_volume_24h:,.0f} USD
 
-Volumen trend:
+Volumen változás:
 {fmt(volume_change)} %
 
 
 TECHNIKAI ADATOK
 
-Idősík:
-kb. 4H mintavételezett CoinGecko árfolyam
-
-Trend:
+Technikai trend:
 {technical_trend}
 
 RSI14:
@@ -535,11 +732,17 @@ MACD signal:
 MACD histogram:
 {fmt(macd_hist, 4)}
 
-Közeli támasz:
+Támasz:
 {support:.2f} USD
 
-Közeli ellenállás:
+Támasz távolsága:
+{support_distance:.2f} %
+
+Ellenállás:
 {resistance:.2f} USD
+
+Ellenállás távolsága:
+{resistance_distance:.2f} %
 
 
 PIACI KÖRNYEZET
@@ -547,8 +750,11 @@ PIACI KÖRNYEZET
 BTC ár:
 {fmt(btc_price)} USD
 
-BTC 24h változás:
+BTC 24h:
 {fmt(btc_change_24h)} %
+
+SOL relatív erő BTC-hez képest:
+{fmt(sol_vs_btc_24h)} %
 
 BTC dominancia:
 {fmt(btc_dominance)} %
@@ -556,71 +762,177 @@ BTC dominancia:
 Fear & Greed:
 {fear_greed if fear_greed is not None else "nincs adat"}
 
-Besorolás:
+Fear & Greed besorolás:
 {fear_class}
 
 
-Készíts maximum 2600 karakteres,
-tömör magyar piaci elemzést.
+OBJEKTÍV MODELL
 
-Pontosan ezt a szerkezetet használd:
+Market score:
+{score}/100
 
-📊 PIACI HELYZET
-Maximum 3 rövid sor.
-Értékeld az árat, 24h mozgást és volument.
+Python által számított bias:
+{calculated_bias}
 
-📈 TECHNIKAI KÉP
-Maximum 5 rövid sor.
-Értékeld RSI, EMA20/50/200 és MACD alapján
-a trendet és momentumot.
 
-🎯 KULCSSZINTEK
-Írd le a támaszt és ellenállást.
-Maximum 3 rövid sor.
-Mondd meg, mit jelentene egy kitörés vagy letörés.
-
-🌍 PIACI HANGULAT
-Maximum 4 rövid sor.
-BTC mozgás, BTC dominancia és
-Fear & Greed alapján.
-
-🔮 FORGATÓKÖNYVEK
-🟢 Bullish:
-maximum 2 rövid mondat.
-
-🔴 Bearish:
-maximum 2 rövid mondat.
-
-24-48h:
-1 rövid mondat.
-
-1 hét:
-1 rövid mondat.
-
-⚠️ KOCKÁZAT
-Maximum 3 rövid pont.
-
-🧭 NAPI BIAS
-Pontosan egyet válassz:
-
-ERŐSEN BULLISH
-BULLISH
-SEMLEGES
-BEARISH
-ERŐSEN BEARISH
-
-Végül:
-Ma ezt figyelném: ...
+Készíts maximum 3200 karakteres,
+professzionális magyar napi SOL elemzést.
 
 Ne ismételd feleslegesen ugyanazokat a számokat.
-Ne találj ki híreket.
-Ne találj ki derivatív adatokat.
-Legyél objektív.
+
+Pontosan ezt a struktúrát használd:
+
+
+📊 PIACI HELYZET
+
+Maximum 4 rövid sor.
+
+Értékeld:
+- 24h mozgás
+- 7 napos momentum
+- 30 napos trend
+- volumen
+
+
+📈 TECHNIKAI KÉP
+
+Maximum 6 rövid sor.
+
+Értékeld:
+- RSI
+- EMA20 / EMA50 / EMA200 struktúra
+- MACD
+- momentum
+- trend minősége
+
+Ne csak felsorold az indikátorokat,
+hanem mondd el röviden, mit jelentenek együtt.
+
+
+⚖️ RELATÍV ERŐ
+
+Maximum 3 rövid sor.
+
+Értékeld:
+SOL mennyire teljesít jobban vagy rosszabbul,
+mint BTC.
+
+Írd le, hogy ez támogatja vagy gyengíti-e
+a SOL setupot.
+
+
+🎯 KULCSSZINTEK
+
+Írd le:
+- legfontosabb támasz
+- legfontosabb ellenállás
+
+Majd:
+
+Kitörési feltétel:
+maximum 1 rövid mondat.
+
+Letörési feltétel:
+maximum 1 rövid mondat.
+
+
+🌍 PIACI HANGULAT
+
+Maximum 4 rövid sor.
+
+Értékeld:
+- BTC mozgását
+- BTC dominanciát
+- Fear & Greed állapotát
+- ezek altcoinokra gyakorolt hatását
+
+
+🔮 24–48H OUTLOOK
+
+🟢 BULL CASE
+Maximum 3 rövid sor.
+Írd le:
+- milyen feltétel aktiválja
+- melyik szint áttörése fontos
+- mi erősítené meg
+
+⚪ BASE CASE
+Maximum 3 rövid sor.
+Ez legyen az adatok alapján
+leginkább valószínű alappálya.
+
+🔴 BEAR CASE
+Maximum 3 rövid sor.
+Írd le:
+- mi aktiválja
+- melyik támasz elvesztése kritikus
+- mi erősítené meg
+
+
+📅 1 HETES OUTLOOK
+
+Maximum 5 rövid sor.
+
+Vedd figyelembe:
+- 7 napos teljesítmény
+- 30 napos teljesítmény
+- EMA struktúra
+- momentum
+- SOL/BTC relatív erő
+
+
+🎯 INVALIDATION
+
+Adj egy konkrét technikai feltételt,
+amely esetén a jelenlegi bias
+már nem tekinthető érvényesnek.
+
+Maximum 2 sor.
+
+
+⚠️ FŐ KOCKÁZATOK
+
+Maximum 3 rövid pont.
+
+Csak az adatokból indokolható
+kockázatokat említsd.
+
+
+📊 CONFIDENCE
+
+Objektív market score:
+{score}/100
+
+Ezt használd confidence értékként.
+
+Ne találj ki saját százalékot.
+
+Egy rövid mondatban magyarázd meg,
+mi növeli vagy csökkenti a confidence-et.
+
+
+🧭 NAPI BIAS
+
+Elsődlegesen ezt használd:
+
+{calculated_bias}
+
+Csak akkor térj el tőle,
+ha konkrét technikai ellentmondást találsz.
+
+Ha eltérsz,
+egy mondatban indokold.
+
+
+👀 MA EZT FIGYELNÉM
+
+Egyetlen rövid,
+konkrét kereskedői szempont.
 """
 
 
 # =========================================================
-# GROQ
+# GROQ GPT-OSS
 # =========================================================
 
 print("GPT-OSS elemzés indítása...")
@@ -635,7 +947,8 @@ groq_response = requests.post(
             "application/json"
     },
     json={
-        "model": "openai/gpt-oss-120b",
+        "model":
+            "openai/gpt-oss-120b",
 
         "messages": [
             {
@@ -677,10 +990,13 @@ message = f"""📈 SOL DAILY
 🕒 {date_string}
 
 💰 SOL: {sol_price:.2f} USD
-📊 24h: {sol_change_24h:+.2f}%
+24h: {sol_change_24h:+.2f}%
+7d: {sol_change_7d:+.2f}%
+30d: {sol_change_30d:+.2f}%
 
-⬆️ High: {sol_high_24h:.2f}
-⬇️ Low: {sol_low_24h:.2f}
+⚖️ SOL vs BTC: {fmt(sol_vs_btc_24h)}%
+📊 Score: {score}/100
+🧭 Bias: {calculated_bias}
 
 {analysis}
 """
@@ -701,7 +1017,7 @@ if len(message) > TELEGRAM_SAFE_LIMIT:
 
     message = (
         message[:3920]
-        + "\n\n⚠️ Riport rövidítve."
+        + "\n\n⚠️ Riport automatikusan rövidítve."
     )
 
 

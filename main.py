@@ -1,4 +1,5 @@
 import os
+import time
 import requests
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -12,123 +13,56 @@ TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 GROQ_API_KEY = os.environ["GROQ_API_KEY"]
 
-SYMBOL = "SOLUSDT"
+COINGECKO = "https://api.coingecko.com/api/v3"
 
-BINANCE_FUTURES = "https://fapi.binance.com"
-BINANCE_SPOT = "https://api.binance.com"
+HEADERS = {
+    "User-Agent": "SOL-Daily-Market-Analysis/1.0"
+}
+
+
+# =========================================================
+# BIZTONSÁGOS API LEKÉRÉS
+# =========================================================
+
+def get_json(url, params=None, retries=3, timeout=30):
+    last_error = None
+
+    for attempt in range(retries):
+        try:
+            response = requests.get(
+                url,
+                params=params,
+                headers=HEADERS,
+                timeout=timeout
+            )
+
+            print(
+                f"GET {response.url} -> "
+                f"{response.status_code}"
+            )
+
+            response.raise_for_status()
+            return response.json()
+
+        except Exception as e:
+            last_error = e
+            print(
+                f"API hiba, próbálkozás "
+                f"{attempt + 1}/{retries}: {e}"
+            )
+
+            if attempt < retries - 1:
+                time.sleep(5)
+
+    raise last_error
 
 
 # =========================================================
 # SEGÉDFÜGGVÉNYEK
 # =========================================================
 
-def get_json(url, params=None, timeout=15):
-    response = requests.get(url, params=params, timeout=timeout)
-    response.raise_for_status()
-    return response.json()
-
-
-def ema(values, period):
-    """
-    Exponential Moving Average
-    """
-    if len(values) < period:
-        return None
-
-    multiplier = 2 / (period + 1)
-    result = sum(values[:period]) / period
-
-    for price in values[period:]:
-        result = (price - result) * multiplier + result
-
-    return result
-
-
-def ema_series(values, period):
-    if len(values) < period:
-        return []
-
-    multiplier = 2 / (period + 1)
-    current = sum(values[:period]) / period
-
-    results = [current]
-
-    for price in values[period:]:
-        current = (price - current) * multiplier + current
-        results.append(current)
-
-    return results
-
-
-def calculate_rsi(values, period=14):
-    """
-    RSI Wilder-módszerrel
-    """
-    if len(values) <= period:
-        return None
-
-    changes = [
-        values[i] - values[i - 1]
-        for i in range(1, len(values))
-    ]
-
-    gains = [max(x, 0) for x in changes]
-    losses = [abs(min(x, 0)) for x in changes]
-
-    avg_gain = sum(gains[:period]) / period
-    avg_loss = sum(losses[:period]) / period
-
-    for i in range(period, len(changes)):
-        avg_gain = (
-            (avg_gain * (period - 1)) + gains[i]
-        ) / period
-
-        avg_loss = (
-            (avg_loss * (period - 1)) + losses[i]
-        ) / period
-
-    if avg_loss == 0:
-        return 100.0
-
-    rs = avg_gain / avg_loss
-
-    return 100 - (100 / (1 + rs))
-
-
-def calculate_macd(values):
-    """
-    MACD 12 / 26 / 9
-    """
-
-    ema12 = ema_series(values, 12)
-    ema26 = ema_series(values, 26)
-
-    if not ema12 or not ema26:
-        return None, None, None
-
-    # A két EMA sor hosszának összehangolása
-    difference = len(ema12) - len(ema26)
-    ema12 = ema12[difference:]
-
-    macd_line = [
-        a - b
-        for a, b in zip(ema12, ema26)
-    ]
-
-    signal_series = ema_series(macd_line, 9)
-
-    if not signal_series:
-        return None, None, None
-
-    macd_value = macd_line[-1]
-    signal_value = signal_series[-1]
-    histogram = macd_value - signal_value
-
-    return macd_value, signal_value, histogram
-
-
 def pct_change(old, new):
-    if old == 0:
+    if old is None or old == 0:
         return None
 
     return ((new - old) / old) * 100
@@ -141,158 +75,353 @@ def fmt(value, decimals=2):
     return f"{value:.{decimals}f}"
 
 
-# =========================================================
-# 1. SOL 24H PIACI ADAT
-# =========================================================
+def ema(values, period):
+    if len(values) < period:
+        return None
 
-ticker = get_json(
-    f"{BINANCE_SPOT}/api/v3/ticker/24hr",
-    {"symbol": SYMBOL}
-)
+    multiplier = 2 / (period + 1)
 
-sol_price = float(ticker["lastPrice"])
-sol_change_24h = float(ticker["priceChangePercent"])
-sol_high_24h = float(ticker["highPrice"])
-sol_low_24h = float(ticker["lowPrice"])
-sol_volume = float(ticker["quoteVolume"])
+    current = sum(values[:period]) / period
 
+    for price in values[period:]:
+        current = (
+            (price - current) * multiplier
+            + current
+        )
 
-# =========================================================
-# 2. 4H GYERTYÁK
-# =========================================================
-
-klines = get_json(
-    f"{BINANCE_FUTURES}/fapi/v1/klines",
-    {
-        "symbol": SYMBOL,
-        "interval": "4h",
-        "limit": 220
-    }
-)
-
-# Az utolsó gyertya még nyitott lehet,
-# ezért nem használjuk az indikátorokhoz.
-closed_klines = klines[:-1]
-
-opens = [float(x[1]) for x in closed_klines]
-highs = [float(x[2]) for x in closed_klines]
-lows = [float(x[3]) for x in closed_klines]
-closes = [float(x[4]) for x in closed_klines]
-volumes = [float(x[5]) for x in closed_klines]
+    return current
 
 
-# =========================================================
-# 3. TECHNIKAI INDIKÁTOROK
-# =========================================================
+def ema_series(values, period):
+    if len(values) < period:
+        return []
 
-rsi14 = calculate_rsi(closes, 14)
+    multiplier = 2 / (period + 1)
 
-ema20 = ema(closes, 20)
-ema50 = ema(closes, 50)
-ema200 = ema(closes, 200)
+    current = sum(values[:period]) / period
 
-macd, macd_signal, macd_histogram = calculate_macd(closes)
+    results = [current]
 
+    for price in values[period:]:
+        current = (
+            (price - current) * multiplier
+            + current
+        )
 
-# =========================================================
-# 4. TÁMASZ / ELLENÁLLÁS
-# =========================================================
+        results.append(current)
 
-# Utolsó 20 lezárt 4h gyertya = kb. 3,3 nap
-
-recent_highs = highs[-20:]
-recent_lows = lows[-20:]
-
-resistance = max(recent_highs)
-support = min(recent_lows)
+    return results
 
 
-# =========================================================
-# 5. VOLUMEN MOMENTUM
-# =========================================================
+def calculate_rsi(values, period=14):
+    if len(values) <= period:
+        return None
 
-recent_volume = sum(volumes[-6:]) / 6
-previous_volume = sum(volumes[-12:-6]) / 6
+    changes = [
+        values[i] - values[i - 1]
+        for i in range(1, len(values))
+    ]
 
-volume_change = pct_change(
-    previous_volume,
-    recent_volume
-)
+    gains = [
+        max(change, 0)
+        for change in changes
+    ]
+
+    losses = [
+        abs(min(change, 0))
+        for change in changes
+    ]
+
+    avg_gain = sum(gains[:period]) / period
+    avg_loss = sum(losses[:period]) / period
+
+    for i in range(period, len(changes)):
+        avg_gain = (
+            avg_gain * (period - 1)
+            + gains[i]
+        ) / period
+
+        avg_loss = (
+            avg_loss * (period - 1)
+            + losses[i]
+        ) / period
+
+    if avg_loss == 0:
+        return 100.0
+
+    rs = avg_gain / avg_loss
+
+    return 100 - (100 / (1 + rs))
 
 
-# =========================================================
-# 6. FUNDING RATE
-# =========================================================
+def calculate_macd(values):
+    ema12 = ema_series(values, 12)
+    ema26 = ema_series(values, 26)
 
-try:
-    premium = get_json(
-        f"{BINANCE_FUTURES}/fapi/v1/premiumIndex",
-        {"symbol": SYMBOL}
+    if not ema12 or not ema26:
+        return None, None, None
+
+    difference = len(ema12) - len(ema26)
+
+    if difference > 0:
+        ema12 = ema12[difference:]
+
+    macd_line = [
+        fast - slow
+        for fast, slow in zip(ema12, ema26)
+    ]
+
+    signal_series = ema_series(macd_line, 9)
+
+    if not signal_series:
+        return None, None, None
+
+    macd_value = macd_line[-1]
+    signal_value = signal_series[-1]
+
+    histogram = macd_value - signal_value
+
+    return (
+        macd_value,
+        signal_value,
+        histogram
     )
 
-    funding_rate = (
-        float(premium["lastFundingRate"]) * 100
-    )
-
-except Exception as e:
-    print("Funding rate hiba:", e)
-    funding_rate = None
-
 
 # =========================================================
-# 7. OPEN INTEREST
+# COINGECKO HISTORIKUS ADAT
 # =========================================================
 
-try:
-    oi_history = get_json(
-        f"{BINANCE_FUTURES}/futures/data/openInterestHist",
+def get_market_chart(coin_id, days):
+    return get_json(
+        f"{COINGECKO}/coins/{coin_id}/market_chart",
         {
-            "symbol": SYMBOL,
-            "period": "1d",
-            "limit": 2
+            "vs_currency": "usd",
+            "days": days
         }
     )
 
-    if len(oi_history) >= 2:
 
-        old_oi = float(
-            oi_history[-2]["sumOpenInterestValue"]
-        )
+print("SOL piaci adatok lekérése...")
 
-        new_oi = float(
-            oi_history[-1]["sumOpenInterestValue"]
-        )
+sol_data = get_market_chart(
+    "solana",
+    60
+)
 
-        oi_change = pct_change(
-            old_oi,
-            new_oi
-        )
 
-    else:
-        oi_change = None
+# =========================================================
+# SOL ÓRÁS ADATOK
+# =========================================================
+
+price_points = sol_data["prices"]
+volume_points = sol_data["total_volumes"]
+
+hourly_prices = [
+    float(point[1])
+    for point in price_points
+]
+
+hourly_volumes = [
+    float(point[1])
+    for point in volume_points
+]
+
+
+if len(hourly_prices) < 250:
+    raise RuntimeError(
+        "Nincs elegendő CoinGecko történelmi adat."
+    )
+
+
+# =========================================================
+# AKTUÁLIS SOL ADAT
+# =========================================================
+
+sol_price = hourly_prices[-1]
+
+# kb. 24 órával ezelőtti adat
+price_24h_ago = hourly_prices[-25]
+
+sol_change_24h = pct_change(
+    price_24h_ago,
+    sol_price
+)
+
+last_24_prices = hourly_prices[-24:]
+
+sol_high_24h = max(last_24_prices)
+sol_low_24h = min(last_24_prices)
+
+sol_volume_24h = hourly_volumes[-1]
+
+
+# =========================================================
+# VOLUMEN VÁLTOZÁS
+# =========================================================
+
+recent_volumes = hourly_volumes[-24:]
+previous_volumes = hourly_volumes[-48:-24]
+
+if recent_volumes and previous_volumes:
+
+    recent_volume_avg = (
+        sum(recent_volumes)
+        / len(recent_volumes)
+    )
+
+    previous_volume_avg = (
+        sum(previous_volumes)
+        / len(previous_volumes)
+    )
+
+    volume_change = pct_change(
+        previous_volume_avg,
+        recent_volume_avg
+    )
+
+else:
+    volume_change = None
+
+
+# =========================================================
+# KB. 4 ÓRÁS PRICE SERIES
+#
+# CoinGecko órás adatából minden 4. pontot használunk.
+# Ez NEM exchange OHLC gyertya,
+# hanem 4 óránként mintavett piaci ár.
+# =========================================================
+
+prices_4h = hourly_prices[::4]
+
+
+if len(prices_4h) < 205:
+    raise RuntimeError(
+        "Nincs elég 4 órás adat EMA200 számításhoz."
+    )
+
+
+# =========================================================
+# TECHNIKAI INDIKÁTOROK
+# =========================================================
+
+rsi14 = calculate_rsi(
+    prices_4h,
+    14
+)
+
+ema20 = ema(
+    prices_4h,
+    20
+)
+
+ema50 = ema(
+    prices_4h,
+    50
+)
+
+ema200 = ema(
+    prices_4h,
+    200
+)
+
+macd_value, macd_signal, macd_hist = (
+    calculate_macd(prices_4h)
+)
+
+
+# =========================================================
+# TÁMASZ / ELLENÁLLÁS
+#
+# Utolsó 30 db 4h adatpont ~= 5 nap
+# =========================================================
+
+recent_prices = prices_4h[-30:]
+
+support = min(recent_prices)
+resistance = max(recent_prices)
+
+
+# =========================================================
+# TREND
+# =========================================================
+
+if (
+    ema20 is not None
+    and ema50 is not None
+    and ema200 is not None
+    and sol_price > ema20 > ema50 > ema200
+):
+    technical_trend = "BULLISH"
+
+elif (
+    ema20 is not None
+    and ema50 is not None
+    and ema200 is not None
+    and sol_price < ema20 < ema50 < ema200
+):
+    technical_trend = "BEARISH"
+
+else:
+    technical_trend = "MIXED / SIDEWAYS"
+
+
+# =========================================================
+# BTC
+# =========================================================
+
+print("BTC adatok lekérése...")
+
+try:
+    btc_data = get_market_chart(
+        "bitcoin",
+        2
+    )
+
+    btc_prices = [
+        float(point[1])
+        for point in btc_data["prices"]
+    ]
+
+    btc_price = btc_prices[-1]
+
+    btc_24h_ago = btc_prices[-25]
+
+    btc_change_24h = pct_change(
+        btc_24h_ago,
+        btc_price
+    )
 
 except Exception as e:
-    print("Open interest hiba:", e)
-    oi_change = None
+    print("BTC adat hiba:", e)
+
+    btc_price = None
+    btc_change_24h = None
 
 
 # =========================================================
-# 8. FEAR & GREED
+# FEAR & GREED
 # =========================================================
+
+print("Fear & Greed lekérése...")
 
 try:
     fear_data = get_json(
         "https://api.alternative.me/fng/",
-        {"limit": 1}
+        {
+            "limit": 1,
+            "format": "json"
+        }
     )
 
     fear_greed = int(
         fear_data["data"][0]["value"]
     )
 
-    fear_class = fear_data["data"][0][
-        "value_classification"
-    ]
+    fear_class = (
+        fear_data["data"][0]
+        ["value_classification"]
+    )
 
 except Exception as e:
     print("Fear & Greed hiba:", e)
@@ -302,8 +431,10 @@ except Exception as e:
 
 
 # =========================================================
-# 9. BTC DOMINANCIA
+# BTC DOMINANCIA
 # =========================================================
+
+print("BTC dominancia lekérése...")
 
 try:
     global_data = get_json(
@@ -318,86 +449,49 @@ try:
 
 except Exception as e:
     print("BTC dominance hiba:", e)
+
     btc_dominance = None
 
 
 # =========================================================
-# 10. BTC 24H MOZGÁS
+# DÁTUM
 # =========================================================
 
-try:
-    btc_ticker = get_json(
-        f"{BINANCE_SPOT}/api/v3/ticker/24hr",
-        {"symbol": "BTCUSDT"}
-    )
-
-    btc_change = float(
-        btc_ticker["priceChangePercent"]
-    )
-
-except Exception as e:
-    print("BTC hiba:", e)
-    btc_change = None
-
-
-# =========================================================
-# 11. TREND OBJEKTÍV BESOROLÁSA
-# =========================================================
-
-if (
-    ema20
-    and ema50
-    and ema200
-    and sol_price > ema20 > ema50 > ema200
-):
-
-    technical_trend = "BULLISH"
-
-elif (
-    ema20
-    and ema50
-    and ema200
-    and sol_price < ema20 < ema50 < ema200
-):
-
-    technical_trend = "BEARISH"
-
-else:
-
-    technical_trend = "MIXED / SIDEWAYS"
-
-
-# =========================================================
-# 12. ADATCSOMAG AZ AI-NAK
-# =========================================================
-
-budapest_time = datetime.now(
+local_time = datetime.now(
     ZoneInfo("Europe/Budapest")
 )
 
-date_string = budapest_time.strftime(
+date_string = local_time.strftime(
     "%Y-%m-%d %H:%M"
 )
 
 
+# =========================================================
+# GROQ PROMPT
+# =========================================================
+
 prompt = f"""
-Te professzionális kriptopiaci elemző és swing trader vagy.
+Te professzionális kriptovaluta-piaci elemző és
+swing trader vagy.
 
-Az alábbi adatok VALÓS API adatok.
+Az alábbi adatok külső API-kból származó
+valós piaci adatok.
 
-TILOS olyan számot, hírt vagy eseményt kitalálnod,
-amely nincs az adatok között.
+FONTOS:
+TILOS olyan számot, hírt, whale aktivitást,
+funding rate-et vagy open interest adatot
+kitalálnod, amely nincs megadva.
 
 Dátum:
 {date_string}
 
-SOLANA PIACI ADATOK
+SOLANA
 
-Ár:
+Aktuális ár:
 {sol_price:.2f} USD
 
 24h változás:
-{sol_change_24h:.2f} %
+{fmt(sol_change_24h)} %
 
 24h maximum:
 {sol_high_24h:.2f} USD
@@ -406,15 +500,21 @@ SOLANA PIACI ADATOK
 {sol_low_24h:.2f} USD
 
 24h volumen:
-{sol_volume:,.0f} USD
+{sol_volume_24h:,.0f} USD
+
+Volumen trend:
+{fmt(volume_change)} %
 
 
-TECHNIKAI ADATOK – 4H
+TECHNIKAI ADATOK
+
+Idősík:
+kb. 4H mintavételezett CoinGecko árfolyam
 
 Trend:
 {technical_trend}
 
-RSI 14:
+RSI14:
 {fmt(rsi14)}
 
 EMA20:
@@ -427,74 +527,81 @@ EMA200:
 {fmt(ema200)}
 
 MACD:
-{fmt(macd, 4)}
+{fmt(macd_value, 4)}
 
 MACD signal:
 {fmt(macd_signal, 4)}
 
 MACD histogram:
-{fmt(macd_histogram, 4)}
+{fmt(macd_hist, 4)}
 
-Támasz:
+Közeli támasz:
 {support:.2f} USD
 
-Ellenállás:
+Közeli ellenállás:
 {resistance:.2f} USD
-
-4H volumen változás:
-{fmt(volume_change)} %
-
-
-DERIVATÍV ADATOK
-
-Funding rate:
-{fmt(funding_rate, 4)} %
-
-Open Interest 24h változás:
-{fmt(oi_change)} %
 
 
 PIACI KÖRNYEZET
 
-BTC 24h:
-{fmt(btc_change)} %
+BTC ár:
+{fmt(btc_price)} USD
+
+BTC 24h változás:
+{fmt(btc_change_24h)} %
 
 BTC dominancia:
 {fmt(btc_dominance)} %
 
 Fear & Greed:
 {fear_greed if fear_greed is not None else "nincs adat"}
-({fear_class})
+
+Besorolás:
+{fear_class}
 
 
-Készíts maximum 2600 karakteres magyar elemzést.
+Készíts maximum 2600 karakteres,
+tömör magyar piaci elemzést.
 
-Pontosan ezt a struktúrát használd:
+Pontosan ezt a szerkezetet használd:
 
 📊 PIACI HELYZET
 Maximum 3 rövid sor.
+Értékeld az árat, 24h mozgást és volument.
 
 📈 TECHNIKAI KÉP
-RSI, EMA-k, MACD, momentum.
 Maximum 5 rövid sor.
+Értékeld RSI, EMA20/50/200 és MACD alapján
+a trendet és momentumot.
 
 🎯 KULCSSZINTEK
-Támasz és ellenállás.
-Írd le röviden, mi történne kitörés vagy letörés esetén.
+Írd le a támaszt és ellenállást.
+Maximum 3 rövid sor.
+Mondd meg, mit jelentene egy kitörés vagy letörés.
 
 🌍 PIACI HANGULAT
-BTC, BTC dominancia, Fear & Greed,
-funding és OI alapján maximum 4 sor.
+Maximum 4 rövid sor.
+BTC mozgás, BTC dominancia és
+Fear & Greed alapján.
 
 🔮 FORGATÓKÖNYVEK
-🟢 Bullish: 2 rövid mondat.
-🔴 Bearish: 2 rövid mondat.
+🟢 Bullish:
+maximum 2 rövid mondat.
+
+🔴 Bearish:
+maximum 2 rövid mondat.
+
+24-48h:
+1 rövid mondat.
+
+1 hét:
+1 rövid mondat.
 
 ⚠️ KOCKÁZAT
 Maximum 3 rövid pont.
 
 🧭 NAPI BIAS
-Csak egy ezek közül:
+Pontosan egyet válassz:
 
 ERŐSEN BULLISH
 BULLISH
@@ -502,20 +609,23 @@ SEMLEGES
 BEARISH
 ERŐSEN BEARISH
 
-Utána egyetlen rövid mondat:
-"Ma ezt figyelném: ..."
+Végül:
+Ma ezt figyelném: ...
 
-Ne használj hosszú bevezetést.
-Ne ismételd az adatokat feleslegesen.
+Ne ismételd feleslegesen ugyanazokat a számokat.
 Ne találj ki híreket.
+Ne találj ki derivatív adatokat.
+Legyél objektív.
 """
 
 
 # =========================================================
-# 13. GROQ GPT-OSS
+# GROQ
 # =========================================================
 
-response = requests.post(
+print("GPT-OSS elemzés indítása...")
+
+groq_response = requests.post(
     "https://api.groq.com/openai/v1/chat/completions",
     headers={
         "Authorization":
@@ -526,6 +636,7 @@ response = requests.post(
     },
     json={
         "model": "openai/gpt-oss-120b",
+
         "messages": [
             {
                 "role": "user",
@@ -533,60 +644,69 @@ response = requests.post(
             }
         ]
     },
-    timeout=60
+    timeout=90
 )
 
-print("GROQ STATUS:", response.status_code)
+print(
+    "GROQ STATUS:",
+    groq_response.status_code
+)
 
-response.raise_for_status()
+if not groq_response.ok:
+    print(
+        "GROQ ERROR:",
+        groq_response.text
+    )
 
-data = response.json()
+groq_response.raise_for_status()
+
+groq_data = groq_response.json()
 
 analysis = (
-    data["choices"][0]
+    groq_data["choices"][0]
     ["message"]["content"]
 )
 
 
 # =========================================================
-# 14. TELEGRAM ÜZENET
+# TELEGRAM ÜZENET
 # =========================================================
 
 message = f"""📈 SOL DAILY
 
 🕒 {date_string}
 
-💰 {sol_price:.2f} USD
-24h: {sol_change_24h:+.2f}%
+💰 SOL: {sol_price:.2f} USD
+📊 24h: {sol_change_24h:+.2f}%
 
-High: {sol_high_24h:.2f}
-Low: {sol_low_24h:.2f}
+⬆️ High: {sol_high_24h:.2f}
+⬇️ Low: {sol_low_24h:.2f}
 
 {analysis}
 """
 
 
 # =========================================================
-# TELEGRAM 4096 LIMIT
+# TELEGRAM LIMIT
 # =========================================================
 
-TELEGRAM_LIMIT = 4096
+TELEGRAM_SAFE_LIMIT = 4000
 
-if len(message) > 4000:
+if len(message) > TELEGRAM_SAFE_LIMIT:
 
     print(
-        "FIGYELEM: Telegram üzenet túl hosszú:",
+        "FIGYELEM: túl hosszú Telegram üzenet:",
         len(message)
     )
 
     message = (
-        message[:3950]
-        + "\n\n⚠️ Riport automatikusan rövidítve."
+        message[:3920]
+        + "\n\n⚠️ Riport rövidítve."
     )
 
 
 # =========================================================
-# 15. TELEGRAM KÜLDÉS
+# TELEGRAM KÜLDÉS
 # =========================================================
 
 telegram_response = requests.post(
@@ -604,6 +724,17 @@ telegram_response = requests.post(
     timeout=30
 )
 
+print(
+    "TELEGRAM STATUS:",
+    telegram_response.status_code
+)
+
+if not telegram_response.ok:
+    print(
+        "TELEGRAM ERROR:",
+        telegram_response.text
+    )
+
 telegram_response.raise_for_status()
 
 print(
@@ -611,9 +742,4 @@ print(
     len(message)
 )
 
-print(
-    "TELEGRAM RESPONSE:",
-    telegram_response.text
-)
-
-print("KÉSZ")
+print("✅ KÉSZ – Telegram elküldve")
